@@ -1,0 +1,23 @@
+{
+    "showDir": "/media/user/tv/Fringe/Season 1",
+    "showName": "Fringe",
+    "filetype": "mkv",
+    "sep": "-",
+    "appendix": "[576p][x264][5.1]",
+    "episode": {
+        "regex": "E([0-9]+)",
+        "position": 0,
+        "offset": 0,
+        "largest": 99
+    },
+    "season": {
+        "regex": "S([0-9]+)",
+        "position": 0,
+        "offset": 0
+    },
+    "version": {
+        "regex": "_V([0-9]+)",
+        "position": 0,
+        "offset": 0
+    }
+}
