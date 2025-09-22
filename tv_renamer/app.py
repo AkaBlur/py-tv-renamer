@@ -288,4 +288,7 @@ class RenamerApp:
         if len(ScanResult) == 0:
             return
 
-        renamer.rename_files(self.__ParseSettings, ScanResult)
+        State = renamer.rename_files(self.__ParseSettings, ScanResult)
+
+        if State != renamer.RenamerError.NO_ERROR:
+            gui.show_error("Renaming Error", renamer.get_error_representation(State))

@@ -24,6 +24,9 @@ class RenamerError(enum.Enum):
     SEASON_NUMBER_INVALID = 31
     VERSION_NUMBER_INVALID = 32
 
+    RENAMING_DUPLICATES = 40
+    RENAMING_FILEPATH_ERROR = 41
+
 
 def get_error_representation(error: RenamerError) -> str:
     ErrName = error.name
@@ -38,6 +41,8 @@ def get_error_representation(error: RenamerError) -> str:
         "EPISODE_NUMBER_INVALID": "Episode number incorrectly formatted!",
         "SEASON_NUMBER_INVALID": "Season number incorrectly formatted!",
         "VERSION_NUMBER_INVALID": "Special Version number incorrectly formatted!",
+        "RENAMING_DUPLICATES": "Attempt to rename duplicate filenames!",
+        "RENAMING_FILEPATH_ERROR": "Could not rename file!",
     }
 
     if ErrorList.get(ErrName) is not None:
@@ -198,7 +203,7 @@ def list_season_episode(
 
 def rename_files(
     appSettings: settings.BatchSettings, scanOutput: list[SeasonEpisodeResult]
-) -> bool:
+) -> RenamerError:
     """Batch rename all files from a successful scan. Will skip files that are
     not correctly matched to prevent failures.
 
@@ -207,10 +212,14 @@ def rename_files(
         scanOutput (list[SeasonEpisodeResult]): List of scan results
 
     Returns:
-        bool: True on success, False if an error occurred
+        RenamerError: Result state from renaming
     """
-    # BUG: only renaming already existing files with different episode / season
-    # numbers will cause overwrite of existing files!
+    CurFiles = [Res.CurrentName for Res in scanOutput]
+    NewFiles = [Res.ReformattedName for Res in scanOutput]
+
+    if len(set(CurFiles) & set(NewFiles)) >= 1:
+        return RenamerError.RENAMING_DUPLICATES
+
     for Entry in scanOutput:
         if Entry.ResultState != RenamerError.NO_ERROR:
             continue
@@ -222,6 +231,6 @@ def rename_files(
             CurPath.rename(NewPath)
 
         except OSError:
-            return False
+            return RenamerError.RENAMING_FILEPATH_ERROR
 
-    return True
+    return RenamerError.NO_ERROR
