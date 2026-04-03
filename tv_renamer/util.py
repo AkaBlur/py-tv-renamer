@@ -56,7 +56,7 @@ def safe_convert_int(inputStr: str) -> int:
     """
     Output = 0
 
-    with contextlib.suppress(ValueError):
+    with contextlib.suppress(ValueError, TypeError):
         Output = int(inputStr)
 
     return Output
