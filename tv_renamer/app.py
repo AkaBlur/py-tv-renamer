@@ -1,12 +1,9 @@
 from __future__ import annotations
-import gui
 from pathlib import Path
 import re
 import shutil
 
-import renamer
-import settings
-import util
+from . import gui, renamer, settings, util
 
 
 class RenamerApp:

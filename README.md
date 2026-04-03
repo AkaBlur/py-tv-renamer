@@ -167,3 +167,30 @@ An optional setting `episode.largest` is included in this file (not in the GUI
 atm). This value can hold any number for the largest episode number for a media
 file to contain. That way the renamer will try and fill the remaining places
 with zeros to the maximum number given here.
+
+---
+
+## Dev
+
+### Setup
+
+For development an extra `pyproject` target `dev` is defined. Best is to install
+the app in editable mode:
+
+```bash
+pip install -e .[dev]
+```
+
+Of course the use of a virtual environment is highly encouraged 😉
+
+### Testing
+
+The main backend is tested using `pytest`. Best is to install the `dev`
+dependencies to enable test support. Then simply run all unit-tests:
+
+```bash
+coverage run -m pytest test --cov=tv_renamer --cov-report=html --cov-report=xml
+```
+
+Coverage report is then output as HTML for web viewing or as XML for usage
+inside your IDE.

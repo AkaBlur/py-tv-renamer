@@ -4,8 +4,7 @@ import math
 from pathlib import Path
 import re
 
-import settings
-import util
+from . import settings, util
 
 
 class RenamerError(enum.Enum):
