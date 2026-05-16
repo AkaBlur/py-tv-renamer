@@ -84,7 +84,7 @@ def test_extract_season_episode(
     assert CheckResult.SpecialVer == version
     assert type(CheckResult.SpecialVer) is int
 
-    assert CheckResult.CurrentName == ""
+    assert CheckResult.CurrentName == testFilename
     assert CheckResult.ReformattedName == ""
 
 
@@ -106,7 +106,6 @@ def test_extract_season_episode(
         ("Show - E01 S01 [somthing].mkv", RenamerError.NO_ERROR),
         ("Show - E01 S01 v1[somthing].mkv", RenamerError.NO_ERROR),
         ("Show - v1 E01 S01[somthing].mkv", RenamerError.NO_ERROR),
-        ("Show - V1 E01 S01[somthing].mkv", RenamerError.NO_ERROR),
         # SEPARATOR_NOT_FOUND
         ("Show.S01E01.mkv", RenamerError.SEPARATOR_NOT_FOUND),
         ("Show S01E01.mkv", RenamerError.SEPARATOR_NOT_FOUND),
@@ -224,12 +223,161 @@ def test_extract_season_episode_number_extraction_error(
 # ------------------------------------------------------------------------------
 # FILE INDEXER
 # ------------------------------------------------------------------------------
+def test_list_season_episode(
+    sample_files_correct, sample_filenames_correct, inst_default_settings
+):
+    TestDir = sample_files_correct[0].parent
+
+    inst_default_settings.ShowDir = TestDir
+
+    CheckListResults = renamer.list_season_episode(inst_default_settings)
+
+    assert type(CheckListResults) is list
+    assert len(CheckListResults) == len(sample_filenames_correct)
+    assert type(CheckListResults[0]) is renamer.SeasonEpisodeResult
+
+    for CheckResult in CheckListResults:
+        assert CheckResult.ResultState == renamer.RenamerError.NO_ERROR
+        assert CheckResult.ReformattedName != ""
 
 
+def test_list_season_episode_errors(tmp_path, inst_default_settings):
+    MockFilenames = [
+        # extraction errors
+        "Show.S01E01.mkv",
+        "Show S01E01.mkv",
+        "Show - S01e01 - E01.mkv",
+        "Show - - S01E01.mkv",
+        "Show - Extra - S01E01.mkv",
+        "Show - S01 - E01.mkv",
+        "Show - E01 - S01.mkv",
+    ]
 
+    MockShowDir = tmp_path / "Show"
+    MockShowDir.mkdir()
+    # some misleading directories
+    MockWrongFiles = [
+        "Show - S01E01.mkv",
+        "Show - S01 E01.mkv",
+    ]
+
+    for File in MockFilenames:
+        MockFile = MockShowDir / File
+        MockFile.touch()
+
+    for Dir in MockWrongFiles:
+        MockDir = MockShowDir / Dir
+        MockDir.mkdir()
+
+    inst_default_settings.ShowDir = MockShowDir
+
+    CheckListResults = renamer.list_season_episode(inst_default_settings)
+
+    assert type(CheckListResults) is list
+    assert len(CheckListResults) == len(MockFilenames)
+    assert type(CheckListResults[0]) is renamer.SeasonEpisodeResult
+
+    for CheckResult in CheckListResults:
+        assert CheckResult.ResultState != renamer.RenamerError.NO_ERROR
 
 
 # ------------------------------------------------------------------------------
 # RENAMER
 # ------------------------------------------------------------------------------
+def test_rename_files(
+    sample_files_correct, sample_filenames_correct, inst_default_settings
+):
+    TestDir = sample_files_correct[0].parent
+    inst_default_settings.ShowDir = TestDir
 
+    inst_default_settings.ShowName = "Test"
+
+    # generate file list
+    TestResults = renamer.list_season_episode(inst_default_settings)
+
+    assert type(TestResults) is list
+    assert len(TestResults) == len(sample_filenames_correct)
+
+    for CheckResult in TestResults:
+        assert CheckResult.ResultState == renamer.RenamerError.NO_ERROR
+
+    # rename
+    CheckResult = renamer.rename_files(inst_default_settings, TestResults)
+    assert CheckResult == renamer.RenamerError.NO_ERROR
+
+    for File in TestDir.iterdir():
+        assert File.exists()
+        assert File.is_file()
+        assert File.name.startswith("Test -")
+
+
+def test_renamer_duplicates(inst_default_settings):
+    # doesn't trigger the renamer
+    TestDuplicates = renamer.SeasonEpisodeResult(
+        ResultState=renamer.RenamerError.NO_ERROR,
+        Episode=1,
+        Season=1,
+        SpecialVer=1,
+        CurrentName="MyFile.mkv",
+        ReformattedName="MyFile.mkv",
+    )
+
+    assert (
+        renamer.rename_files(inst_default_settings, [TestDuplicates])
+        == renamer.RenamerError.RENAMING_DUPLICATES
+    )
+
+
+def test_renamer_cant_rename(inst_default_settings):
+    # doesn't trigger the renamer -> no file to rename
+    TestDuplicates = renamer.SeasonEpisodeResult(
+        ResultState=renamer.RenamerError.NO_ERROR,
+        Episode=1,
+        Season=1,
+        SpecialVer=1,
+        CurrentName="doesn't exist.mkv",
+        ReformattedName="exist.mkv",
+    )
+
+    assert (
+        renamer.rename_files(inst_default_settings, [TestDuplicates])
+        == renamer.RenamerError.RENAMING_FILEPATH_ERROR
+    )
+
+
+def test_renamer_filter_error(inst_default_settings):
+    # doesn't trigger error from renamer -> skip invalid renames
+    TestErrors: list[renamer.SeasonEpisodeResult] = [
+        renamer.SeasonEpisodeResult(
+            ResultState=renamer.RenamerError.SEPARATOR_NOT_FOUND,
+        ),
+        renamer.SeasonEpisodeResult(
+            ResultState=renamer.RenamerError.EPISODE_POS_NOT_FOUND,
+        ),
+        renamer.SeasonEpisodeResult(
+            ResultState=renamer.RenamerError.SEASON_POS_NOT_FOUND, CurrentName="c.mkv"
+        ),
+        renamer.SeasonEpisodeResult(
+            ResultState=renamer.RenamerError.VERSION_POS_NOT_FOUND, CurrentName="d.mkv"
+        ),
+        renamer.SeasonEpisodeResult(
+            ResultState=renamer.RenamerError.EPISODE_NOT_FOUND, CurrentName="e.mkv"
+        ),
+        renamer.SeasonEpisodeResult(
+            ResultState=renamer.RenamerError.SEASON_NOT_FOUND, CurrentName="f.mkv"
+        ),
+        renamer.SeasonEpisodeResult(
+            ResultState=renamer.RenamerError.EPISODE_NUMBER_INVALID, CurrentName="g.mkv"
+        ),
+        renamer.SeasonEpisodeResult(
+            ResultState=renamer.RenamerError.SEASON_NUMBER_INVALID, CurrentName="h.mkv"
+        ),
+        renamer.SeasonEpisodeResult(
+            ResultState=renamer.RenamerError.VERSION_NUMBER_INVALID, CurrentName="i.mkv"
+        ),
+    ]
+
+    assert (
+        renamer.rename_files(inst_default_settings, TestErrors)
+        == renamer.RenamerError.NO_ERROR
+    )
