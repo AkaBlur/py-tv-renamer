@@ -208,3 +208,4 @@ __marimo__/
 
 # custom
 tv_renamer/config.json
+*.bat
