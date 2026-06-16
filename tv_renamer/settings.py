@@ -77,14 +77,23 @@ class BatchSettings:
             IsSchemaValid = False
 
         EpisodeKeys = {"regex", "offset", "position", "largest"}
-        if set(JSONContent["episode"].keys()) != EpisodeKeys:
+        if (
+            JSONContent.get("episode")
+            and set(JSONContent["episode"].keys()) != EpisodeKeys
+        ):
             IsSchemaValid = False
 
         SeasonKeys = EpisodeKeys - {"largest"}
-        if set(JSONContent["season"].keys()) != SeasonKeys:
+        if (
+            JSONContent.get("season")
+            and set(JSONContent["season"].keys()) != SeasonKeys
+        ):
             IsSchemaValid = False
 
-        if set(JSONContent["version"].keys()) != SeasonKeys:
+        if (
+            JSONContent.get("version")
+            and set(JSONContent["version"].keys()) != SeasonKeys
+        ):
             IsSchemaValid = False
 
         if not IsSchemaValid:
@@ -100,17 +109,25 @@ class BatchSettings:
         self.Appendix = JSONContent["appendix"]
 
         self.EpisodeRegex = JSONContent["episode"]["regex"]
-        self.EpisodePosition = int(JSONContent["episode"]["position"])
-        self.EpisodeOffset = int(JSONContent["episode"]["offset"])
-        self.EpisodeLargest = int(JSONContent["episode"]["largest"])
 
         self.SeasonRegex = JSONContent["season"]["regex"]
-        self.SeasonPosition = int(JSONContent["season"]["position"])
-        self.SeasonOffset = int(JSONContent["season"]["offset"])
 
         self.SpecialVerRegex = JSONContent["version"]["regex"]
-        self.SpecialVerPosition = int(JSONContent["version"]["position"])
-        self.SpecialVerOffset = int(JSONContent["version"]["offset"])
+
+        try:
+            self.EpisodePosition = int(JSONContent["episode"]["position"])
+            self.EpisodeOffset = int(JSONContent["episode"]["offset"])
+            self.EpisodeLargest = int(JSONContent["episode"]["largest"])
+
+            self.SeasonPosition = int(JSONContent["season"]["position"])
+            self.SeasonOffset = int(JSONContent["season"]["offset"])
+
+            self.SpecialVerPosition = int(JSONContent["version"]["position"])
+            self.SpecialVerOffset = int(JSONContent["version"]["offset"])
+
+        except ValueError as e:
+            Err = "Could not parse settings entries!"
+            raise RuntimeError(Err) from e
 
     def save_settings(self, configFile: Path) -> None:
         """Save config settings to a JSON file.

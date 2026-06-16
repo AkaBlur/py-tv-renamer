@@ -4,10 +4,12 @@ import math
 from pathlib import Path
 import re
 
-import settings
-import util
+from . import settings, util
 
 
+# ------------------------------------------------------------------------------
+# RENAMER RESULT
+# ------------------------------------------------------------------------------
 class RenamerError(enum.Enum):
     NO_ERROR = 0
 
@@ -63,6 +65,9 @@ class SeasonEpisodeResult:
     ReformattedName: str = ""
 
 
+# ------------------------------------------------------------------------------
+# EXTRACTION LOGIC
+# ------------------------------------------------------------------------------
 def extract_season_episode(  # noqa: C901
     avFilepath: Path, settings: settings.BatchSettings
 ) -> SeasonEpisodeResult:
@@ -78,34 +83,49 @@ def extract_season_episode(  # noqa: C901
     Returns:
         SeasonEpisodeResult: Result of extraction
     """
+    # BUG: detection of multi-episode files not possible currently
+    # e.g.: E19-E21 is probably detected as E19 (according to given regex)
+    # multiple capture groups are not taken into account
     Filename = avFilepath.name
     if settings.SepStr not in Filename:
-        return SeasonEpisodeResult(ResultState=RenamerError.SEPARATOR_NOT_FOUND)
+        return SeasonEpisodeResult(
+            ResultState=RenamerError.SEPARATOR_NOT_FOUND, CurrentName=avFilepath.name
+        )
 
     FilenameSplits = Filename.split(settings.SepStr)
 
     # check validity for indexing
     if len(FilenameSplits) <= settings.EpisodePosition:
-        return SeasonEpisodeResult(ResultState=RenamerError.EPISODE_POS_NOT_FOUND)
+        return SeasonEpisodeResult(
+            ResultState=RenamerError.EPISODE_POS_NOT_FOUND, CurrentName=avFilepath.name
+        )
 
     if len(FilenameSplits) <= settings.SeasonPosition:
-        return SeasonEpisodeResult(ResultState=RenamerError.SEASON_POS_NOT_FOUND)
+        return SeasonEpisodeResult(
+            ResultState=RenamerError.SEASON_POS_NOT_FOUND, CurrentName=avFilepath.name
+        )
 
     if len(FilenameSplits) <= settings.SpecialVerPosition:
-        return SeasonEpisodeResult(ResultState=RenamerError.VERSION_POS_NOT_FOUND)
+        return SeasonEpisodeResult(
+            ResultState=RenamerError.VERSION_POS_NOT_FOUND, CurrentName=avFilepath.name
+        )
 
     # regex construction
     EpisodePart = FilenameSplits[settings.EpisodePosition]
     EpisodeReg = re.search(settings.EpisodeRegex, EpisodePart)
 
     if EpisodeReg is None:
-        return SeasonEpisodeResult(ResultState=RenamerError.EPISODE_NOT_FOUND)
+        return SeasonEpisodeResult(
+            ResultState=RenamerError.EPISODE_NOT_FOUND, CurrentName=avFilepath.name
+        )
 
     SeasonPart = FilenameSplits[settings.SeasonPosition]
     SeasonReg = re.search(settings.SeasonRegex, SeasonPart)
 
     if SeasonReg is None:
-        return SeasonEpisodeResult(ResultState=RenamerError.SEASON_NOT_FOUND)
+        return SeasonEpisodeResult(
+            ResultState=RenamerError.SEASON_NOT_FOUND, CurrentName=avFilepath.name
+        )
 
     SpecialVerPart = FilenameSplits[settings.SpecialVerPosition]
     SpecialVerReg = re.search(settings.SpecialVerRegex, SpecialVerPart)
@@ -116,14 +136,18 @@ def extract_season_episode(  # noqa: C901
         Episode = int(EpisodeReg.group(1))
 
     except ValueError:
-        return SeasonEpisodeResult(ResultState=RenamerError.EPISODE_NUMBER_INVALID)
+        return SeasonEpisodeResult(
+            ResultState=RenamerError.EPISODE_NUMBER_INVALID, CurrentName=avFilepath.name
+        )
 
     Season = 0
     try:
         Season = int(SeasonReg.group(1))
 
     except ValueError:
-        return SeasonEpisodeResult(ResultState=RenamerError.SEASON_NUMBER_INVALID)
+        return SeasonEpisodeResult(
+            ResultState=RenamerError.SEASON_NUMBER_INVALID, CurrentName=avFilepath.name
+        )
 
     if SpecialVerReg is not None:
         SpecialVersion = 0
@@ -131,7 +155,10 @@ def extract_season_episode(  # noqa: C901
             SpecialVersion = int(SpecialVerReg.group(1))
 
         except ValueError:
-            return SeasonEpisodeResult(ResultState=RenamerError.VERSION_NUMBER_INVALID)
+            return SeasonEpisodeResult(
+                ResultState=RenamerError.VERSION_NUMBER_INVALID,
+                CurrentName=avFilepath.name,
+            )
 
     else:
         SpecialVersion = 1
@@ -141,9 +168,13 @@ def extract_season_episode(  # noqa: C901
         Episode=Episode + settings.EpisodeOffset,
         Season=Season + settings.SeasonOffset,
         SpecialVer=SpecialVersion + settings.SpecialVerOffset,
+        CurrentName=avFilepath.name,
     )
 
 
+# ------------------------------------------------------------------------------
+# FILE INDEXER
+# ------------------------------------------------------------------------------
 def list_season_episode(
     appSettings: settings.BatchSettings,
 ) -> list[SeasonEpisodeResult]:
@@ -160,47 +191,94 @@ def list_season_episode(
     Returns:
         list[SeasonEpisodeResult]: List of renamer results
     """
-    # BUG: detection of multi-episode files not possible currently
-    # e.g.: E19-E21 is probably detected as E19 (according to given regex)
-    # multiple capture groups are not taken into account
-    ResultList: list[SeasonEpisodeResult] = []
+    # - get all files
+    FileList = __index_files(appSettings.ShowDir, appSettings.FileExtension)
 
-    for File in appSettings.ShowDir.rglob(f"*.{appSettings.FileExtension}"):
+    # - extract information, contains correct and errored
+    ExtractionResults: list[SeasonEpisodeResult] = [
+        extract_season_episode(File, appSettings) for File in FileList
+    ]
+
+    # - construct renamed episode
+    for Result in ExtractionResults:
+        # check for error
+        if Result.ResultState != RenamerError.NO_ERROR:
+            continue
+
+        Result.ReformattedName = __construct_new_filename(
+            Result,
+            appSettings.ShowName,
+            appSettings.Appendix,
+            appSettings.FileExtension,
+            episodeLargest=appSettings.EpisodeLargest,
+        )
+
+    # - return renamed files
+    return ExtractionResults
+
+
+def __index_files(
+    scanDir: Path, fileExtension: str, *, caseSensitive: bool = False
+) -> list[Path]:
+    """Scans a given directory recursively for files with the given file
+    extension.
+
+    Will not follow symlinks!
+
+    Case-sensitivity can be enabled on demand. Defaults to off
+
+    Args:
+        scanDir (Path): Directory, scanned recursively
+        fileExtension (str): File extensions to list
+        caseSensitive (bool, Optional):
+            Enable case-sensitivity, Defaults to False
+
+    Returns:
+        list[Path]: List of matched files
+    """
+    IndexFiles: list[Path] = []
+
+    for File in scanDir.rglob(f"*.{fileExtension}", case_sensitive=caseSensitive):
         # check for file
         if util.check_file(File) != util.PathError.CORRECT:
             continue
 
-        ExtractInfo = extract_season_episode(File, appSettings)
-        ExtractInfo.CurrentName = File.name
+        IndexFiles.append(File)
 
-        # validity of extraction
-        if ExtractInfo.ResultState != RenamerError.NO_ERROR:
-            ResultList.append(ExtractInfo)
-            continue
-
-        # calculate number of necessary filler zeros
-        NumZeros = math.log10(appSettings.EpisodeLargest)
-        NumZeros = math.ceil(NumZeros)
-        NumZeros = int(NumZeros)
-
-        # construct new name
-        EpisodeStr = str(ExtractInfo.Episode)
-        if len(EpisodeStr) < NumZeros:
-            EpisodeFill = ("").join(["0" for _ in range(NumZeros - len(EpisodeStr))])
-            EpisodeStr = EpisodeFill + EpisodeStr
-
-        # some revision on file
-        if ExtractInfo.SpecialVer > 1:
-            ExtractInfo.ReformattedName = f"{appSettings.ShowName} - S{ExtractInfo.Season}E{EpisodeStr}_V{ExtractInfo.SpecialVer}- {appSettings.Appendix}.{appSettings.FileExtension}"  # noqa: E501
-
-        else:
-            ExtractInfo.ReformattedName = f"{appSettings.ShowName} - S{ExtractInfo.Season}E{EpisodeStr} - {appSettings.Appendix}.{appSettings.FileExtension}"  # noqa: E501
-
-        ResultList.append(ExtractInfo)
-
-    return ResultList
+    return IndexFiles
 
 
+def __construct_new_filename(
+    scanResult: SeasonEpisodeResult,
+    showName: str,
+    appendix: str,
+    fileExtension: str,
+    *,
+    episodeLargest: int = 99,
+) -> str:
+    # calculate number of necessary filler zeros
+    NumZeros = math.log10(episodeLargest)
+    NumZeros = math.ceil(NumZeros)
+    NumZeros = int(NumZeros)
+
+    # construct new name
+    EpisodeStr = str(scanResult.Episode)
+    if len(EpisodeStr) < NumZeros:
+        EpisodeFill = ("").join(["0" for _ in range(NumZeros - len(EpisodeStr))])
+        EpisodeStr = EpisodeFill + EpisodeStr
+
+    # some revision on file
+    if scanResult.SpecialVer > 1:
+        return f"{showName} - S{scanResult.Season}E{EpisodeStr}_V{scanResult.SpecialVer}- {appendix}.{fileExtension}"  # noqa: E501
+
+    return (
+        f"{showName} - S{scanResult.Season}E{EpisodeStr} - {appendix}.{fileExtension}"
+    )
+
+
+# ------------------------------------------------------------------------------
+# RENAMER
+# ------------------------------------------------------------------------------
 def rename_files(
     appSettings: settings.BatchSettings, scanOutput: list[SeasonEpisodeResult]
 ) -> RenamerError:
@@ -215,7 +293,8 @@ def rename_files(
         RenamerError: Result state from renaming
     """
     CurFiles = [Res.CurrentName for Res in scanOutput]
-    NewFiles = [Res.ReformattedName for Res in scanOutput]
+    # only check actual renaming targets
+    NewFiles = [Res.ReformattedName for Res in scanOutput if Res.ReformattedName != ""]
 
     if len(set(CurFiles) & set(NewFiles)) >= 1:
         return RenamerError.RENAMING_DUPLICATES
