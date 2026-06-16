@@ -11,11 +11,12 @@ pretty easy to use. Feel free to use it to your likings (support not included
 
 - Python (>= 3.11)
 
-> [!WARNING]
-> This application is only prepared for usage in a UNIX-like environment.
+> [!NOTE]
+> This application is mainly prepared for usage in a UNIX-like environment.
 >
-> I haven't tested functionality on Windows systems. Especially compatibility
-> with `\` instead of `/` could cause issues.
+> I tested functionality on Windows just briefly. Tested are only basic file
+> paths (e.g. local disks, mounted network shares, etc.). To this extend it
+> *seems* to work.
 
 ## Overview
 
@@ -51,6 +52,13 @@ python3 tv_renamer $PWD
 This will launch the app with the current work directory set as show directory
 to scan (explained down below). I use this as simple setup with an `alias` to
 run as a single command everywhere on my machine.
+
+> [!NOTE]- Windows Execution
+> 
+> On Windows this can be something like a simple batch file inside a local
+> repo copy launching Python via `python -m tv_renamer`. This seems to also work
+> with the configuration without any issues. Then simply create a link to the
+> script somewhere else.
 
 ### Interface
 
