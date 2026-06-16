@@ -53,8 +53,8 @@ This will launch the app with the current work directory set as show directory
 to scan (explained down below). I use this as simple setup with an `alias` to
 run as a single command everywhere on my machine.
 
-> [!NOTE]- Windows Execution
-> 
+> [!NOTE] -Windows Execution
+>  
 > On Windows this can be something like a simple batch file inside a local
 > repo copy launching Python via `python -m tv_renamer`. This seems to also work
 > with the configuration without any issues. Then simply create a link to the
